@@ -13,7 +13,7 @@ tampering transparently.
  * Prevents a process from opening a file for writing, if another process writes
    to it
  * Prevents a process from deleting a file, if another process writes to it
- * Prevents a process from _touch_ing a file, if another process writes to it
+ * Prevents a process from _touching_ a file, if another process writes to it
  * Logs all violations to the system log
 
 ## Usage Example
