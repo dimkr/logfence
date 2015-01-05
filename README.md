@@ -8,6 +8,14 @@ acts as an overlay, which allows only one process to modify each file at a time.
 It is designed to be a simple and effective, generic tool that prevents log
 tampering transparently.
 
+## Features
+
+ * Prevents a process from opening a file for writing, if another process writes
+   to it
+ * Prevents a process from deleting a file, if another process writes to it
+ * Prevents a process from _touch_ing a file, if another process writes to it
+ * Logs all violations to the system log
+
 ## Usage Example
 
 **Application A** ([Python](https://www.python.org/)) writes a log file
