@@ -17,8 +17,11 @@ tampering transparently.
 Credits and Legal Information
 =============================
 
-logfence is free and unencumbered software released under the terms of the MIT
-license; see COPYING for the license text. For a list of its authors and
+compat/sys/queue.h was taken from OpenBSD (http://www.openbsd.org/), for wider
+compatibility with C libraries; see the legal information at the top.
+
+logfence itself is free and unencumbered software released under the terms of
+the MIT license; see COPYING for the license text. For a list of its authors and
 contributors, see AUTHORS.
 
 The ASCII art logo at the top was made using FIGlet (http://www.figlet.org/).

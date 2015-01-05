@@ -8,21 +8,19 @@ SBIN_DIR ?= sbin
 DOC_DIR ?= usr/share/doc/$(PROG)
 MAN_DIR ?= usr/share/man
 
-CFLAGS += -Wall -pedantic -std=gnu99 -D_GNU_SOURCE -DPROG=\"$(PROG)\"
+CFLAGS += -Wall -pedantic -std=gnu99 -D_GNU_SOURCE -DPROG=\"$(PROG)\" -I./compat
 FUSE_CFLAGS = $(shell pkg-config --cflags fuse)
-ZLIB_CFLAGS = $(shell pkg-config --cflags zlib)
 FUSE_LIBS = $(shell pkg-config --libs fuse)
-ZLIB_LIBS = $(shell pkg-config --libs zlib)
 
 SRCS = $(wildcard *.c)
 OBJECTS = $(SRCS:.c=.o)
 HEADERS = $(wildcard *.h)
 
 %.o: %.c $(HEADERS)
-	$(CC) -c -o $@ $< $(CFLAGS) $(FUSE_CFLAGS) $(ZLIB_CFLAGS)
+	$(CC) -c -o $@ $< $(CFLAGS) $(FUSE_CFLAGS)
 
 $(PROG): $(OBJECTS)
-	$(CC) -o $@ $^ $(LDFLAGS) $(FUSE_LIBS) $(ZLIB_LIBS)
+	$(CC) -o $@ $^ $(LDFLAGS) $(FUSE_LIBS)
 
 clean:
 	rm -f $(PROG) $(OBJECTS)
