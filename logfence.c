@@ -441,12 +441,61 @@ static int lf_closedir(const char *name, struct fuse_file_info *fi)
 	return 0;
 }
 
+static int lf_symlink(const char *oldpath, const char *newpath)
+{
+	const struct lf_ctx *lf_ctx;
+
+	lf_ctx = get_lf_ctx();
+	if (NULL == lf_ctx)
+		return -ENOMEM;
+
+	if (-1 == symlinkat(oldpath, lf_ctx->fd, newpath))
+		return -errno;
+
+	return 0;
+}
+
+static int lf_chmod(const char *path, mode_t mode)
+{
+	const struct lf_ctx *lf_ctx;
+
+	lf_ctx = get_lf_ctx();
+	if (NULL == lf_ctx)
+		return -ENOMEM;
+
+	if (-1 == fchmodat(lf_ctx->fd, path, mode, AT_SYMLINK_NOFOLLOW))
+		return -errno;
+
+	return 0;
+}
+
+static int lf_chown(const char *path, uid_t uid, gid_t gid)
+{
+	const struct lf_ctx *lf_ctx;
+
+	lf_ctx = get_lf_ctx();
+	if (NULL == lf_ctx)
+		return -ENOMEM;
+
+	if (-1 == fchownat(lf_ctx->fd,
+	                   path,
+	                   uid,
+	                   gid,
+	                   AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW))
+		return -errno;
+
+	return 0;
+}
+
 static struct fuse_operations lf_oper = {
 	.init		= lf_init,
 	.destroy	= lf_destroy,
 
 	.access		= lf_access,
 	.getattr	= lf_stat,
+
+	.chmod		= lf_chmod,
+	.chown		= lf_chown,
 
 	.create		= lf_create,
 	.truncate	= lf_truncate,
@@ -456,9 +505,11 @@ static struct fuse_operations lf_oper = {
 	.read		= lf_read,
 	.write		= lf_write,
 
+	.symlink	= lf_symlink,
+
 	.opendir	= lf_opendir,
 	.readdir	= lf_readdir,
-	.releasedir	= lf_closedir,
+	.releasedir	= lf_closedir
 };
 
 int main(int argc, char *argv[])
