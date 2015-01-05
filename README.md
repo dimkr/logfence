@@ -1,9 +1,4 @@
- _              __
-| | ___   __ _ / _| ___ _ __   ___ ___
-| |/ _ \ / _` | |_ / _ \ '_ \ / __/ _ \
-| | (_) | (_| |  _|  __/ | | | (_|  __/
-|_|\___/ \__, |_|  \___|_| |_|\___\___|
-         |___/
+# logfence
 
 ## Overview
 
@@ -30,5 +25,3 @@ compatibility with C libraries; see the legal information at the top.
 **logfence** itself is _free_ and unencumbered software released under the terms
 of the _MIT license_; see [COPYING](COPYING) for the license text. For a list of
 its authors and contributors, see [AUTHORS](AUTHORS).
-
-The ASCII art logo at the top was made using [FIGlet](http://www.figlet.org/).
