@@ -33,6 +33,12 @@ struct lf_ctx {
 	int fd;
 };
 
+static void *lf_init(struct fuse_conn_info *conn)
+{
+	openlog(PROG, 0, LOG_DAEMON);
+	return NULL;
+}
+
 static void lf_destroy(void *private_data)
 {
 	const struct lf_ctx *lf_ctx = (const struct lf_ctx *) private_data;
@@ -40,6 +46,8 @@ static void lf_destroy(void *private_data)
 
 	LIST_FOREACH(wrlock, &lf_ctx->wrlocks, peers)
 		free(wrlock);
+
+	closelog();
 }
 
 static struct lf_ctx *get_lf_ctx(void)
@@ -434,6 +442,7 @@ static int lf_closedir(const char *name, struct fuse_file_info *fi)
 }
 
 static struct fuse_operations lf_oper = {
+	.init		= lf_init,
 	.destroy	= lf_destroy,
 
 	.access		= lf_access,
@@ -473,15 +482,11 @@ int main(int argc, char *argv[])
 	if (-1 == ctx.fd)
 		goto destroy_mutex;
 
-	openlog(PROG, 0, LOG_DAEMON);
-
 	LIST_INIT(&ctx.wrlocks);
 	ret = fuse_main((sizeof(fuse_argv) / sizeof(fuse_argv[0])) - 1,
 	                fuse_argv,
 	                &lf_oper,
 	                (void *) &ctx);
-
-	closelog();
 
 	(void) close(ctx.fd);
 
