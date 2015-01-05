@@ -1,0 +1,24 @@
+ _              __
+| | ___   __ _ / _| ___ _ __   ___ ___
+| |/ _ \ / _` | |_ / _ \ '_ \ / __/ _ \
+| | (_) | (_| |  _|  __/ | | | (_|  __/
+|_|\___/ \__, |_|  \___|_| |_|\___\___|
+         |___/
+
+Overview
+========
+
+logfence is a FUSE (http://fuse.sourceforge.net/) based file system that acts as
+an overlay, which allows only one process to modify each file at a time.
+
+It is designed to be a simple and effective, generic tool that prevents log
+tampering transparently.
+
+Credits and Legal Information
+=============================
+
+logfence is free and unencumbered software released under the terms of the MIT
+license; see COPYING for the license text. For a list of its authors and
+contributors, see AUTHORS.
+
+The ASCII art logo at the top was made using FIGlet (http://www.figlet.org/).
