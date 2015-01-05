@@ -1,16 +1,16 @@
 /*
  * Copyright (c) 2015 Dima Krasner
-
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
-
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
-
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -58,7 +58,7 @@ enum lf_fd_types {
 
 /* a regular file handle */
 struct lf_reg_fd {
-	unsigned char type; /* must be the first member - see struct lf_dir_fd */
+	enum lf_fd_types type; /* must be the first member - see struct lf_dir_fd */
 	int fd;
 	struct wrlock *lock; /* the lock associated with the file - we cache it here
 	                        to avoid lookup when the file is closed */
@@ -66,7 +66,7 @@ struct lf_reg_fd {
 
 /* a directory handle */
 struct lf_dir_fd {
-	unsigned char type;
+	enum lf_fd_types type;
 	DIR *fh;
 };
 
@@ -162,6 +162,7 @@ static bool is_locked(const struct lf_ctx *lf_ctx,
 	const struct wrlock *wrlock;
 
 	LIST_FOREACH(wrlock, &lf_ctx->wrlocks, peers) {
+		/* ignore locks owned by the calling process */
 		if (pid == wrlock->pid)
 			continue;
 
@@ -196,6 +197,7 @@ static const char *get_name(const pid_t pid, char *buf, const size_t len)
 		goto close_stat;
 	buf[res] = '\0';
 
+	/* locate and separate the process name - it's enclosed in parentheses */
 	pos = strchr(buf, '(');
 	if (NULL == pos)
 		goto close_stat;
@@ -229,6 +231,7 @@ static int add_lock(const char *name,
 	if (NULL == wrlock)
 		goto end;
 
+	/* stat() the file, so we can compare its inode and device in is_locked() */
 	ret = stat_internal(name, &wrlock->stbuf, true);
 	if (0 != ret)
 		goto free_wrlock;
@@ -287,6 +290,8 @@ static int open_internal(const char *name,
 	if (-1 == pthread_mutex_lock(&lf_ctx->mutex))
 		goto end;
 
+	/* do not check whether files opened without writing permissions are
+	 * locked, for better efficiency */
 	if (0 == (O_WRONLY & flags))
 		check = false;
 	else
@@ -327,6 +332,7 @@ end:
 	return ret;
 }
 
+/* must be called while lf_ctx->mutex is locked */
 static void remove_lock(const struct lf_ctx *lf_ctx,
                         const char *name,
                         struct lf_reg_fd *lf_fd)
@@ -338,7 +344,9 @@ static void remove_lock(const struct lf_ctx *lf_ctx,
 	}
 }
 
-static int close_internal(const char *name, struct lf_reg_fd *lf_fd)
+static int close_internal(const char *name,
+                          struct lf_reg_fd *lf_fd,
+                          const bool delete)
 {
 	struct lf_ctx *lf_ctx;
 	int ret = -ENOMEM;
@@ -355,10 +363,17 @@ static int close_internal(const char *name, struct lf_reg_fd *lf_fd)
 	remove_lock(lf_ctx, name, lf_fd);
 
 	if (-1 == close(fd)) {
+		/* keep the file descriptor but unset the lock pointer, to prevent
+		 * attempts to free it again */
 		lf_fd->lock = NULL;
 		ret = -errno;
 		goto unlock;
 	}
+
+	/* we do this here to avoid races - we want lf_ctx->mutex locked, to prevent
+	 * deletion immediately after another process acquires the write lock */
+	if (true == delete)
+		(void) unlinkat(lf_ctx->fd, &name[1], 0);
 
 	free(lf_fd);
 
@@ -385,6 +400,8 @@ static int lf_create(const char *name,
 	if (NULL == lf_ctx)
 		return -ENOMEM;
 
+	/* creat() does not have a *at() equivalent, so we have to use the
+	 * combination openat(), O_CREAT and fchownat() */
 	ret = open_internal(name, O_CREAT | fi->flags, mode, &lf_fd);
 	if (0 != ret)
 		return ret;
@@ -395,8 +412,7 @@ static int lf_create(const char *name,
 	                   ctx->gid,
 	                   AT_SYMLINK_NOFOLLOW)) {
 		tmp = errno;
-		(void) close_internal(name, lf_fd);
-		(void) unlinkat(lf_ctx->fd, &name[1], 0);
+		(void) close_internal(name, lf_fd, false);
 		return -tmp;
 	}
 
@@ -409,6 +425,8 @@ static int lf_truncate(const char *name, off_t size)
 	struct lf_reg_fd *lf_fd;
 	int ret;
 
+	/* pass O_WRONLY, to respect locks - we do not allow truncation of locked
+	 * files */
 	ret = open_internal(name, O_WRONLY, 0, &lf_fd);
 	if (0 != ret)
 		return ret;
@@ -418,7 +436,7 @@ static int lf_truncate(const char *name, off_t size)
 	else
 		ret = 0;
 
-	(void) close_internal(name, lf_fd);
+	(void) close_internal(name, lf_fd, false);
 
 	return ret;
 }
@@ -448,11 +466,55 @@ static int lf_close(const char *name, struct fuse_file_info *fi)
 	if (LF_REG != lf_fd->type)
 		return -EBADF;
 
-	ret = close_internal(name, lf_fd);
+	ret = close_internal(name, lf_fd, false);
 	if (0 == ret)
 		fi->fh = (uint64_t) (uintptr_t) NULL;
 
 	return ret;
+}
+
+static int lf_unlink(const char *path)
+{
+	char buf[NAME_MAX];
+	struct stat stbuf;
+	const char *comm;
+	struct fuse_context *ctx;
+	const struct lf_ctx *lf_ctx;
+	int ret;
+
+	lf_ctx = get_ctx(&ctx);
+	if (NULL == lf_ctx)
+		return -ENOMEM;
+
+	ret = lf_stat(path, &stbuf);
+	if (0 != ret)
+		return ret;
+
+	/* do not allow deletion of locked files */
+	if (false == is_locked(lf_ctx, path, &stbuf, ctx->pid)) {
+		if (-1 == unlinkat(lf_ctx->fd, &path[1], 0))
+			return -errno;
+		return 0;
+	}
+
+	comm = get_name(ctx->pid, buf, sizeof(buf));
+	if (NULL == comm) {
+		syslog(LOG_ALERT,
+		       "denied unlink of %s%s from %ld\n",
+		       lf_ctx->path,
+		       path,
+		       (long) ctx->pid);
+	}
+	else {
+		syslog(LOG_ALERT,
+		       "denied unlink of %s%s from %ld (%s)\n",
+		       lf_ctx->path,
+		       path,
+		       (long) ctx->pid,
+		       comm);
+	}
+
+	return -EBUSY;
 }
 
 static int lf_read(const char *path,
@@ -495,6 +557,20 @@ static int lf_write(const char *path,
 		return -errno;
 
 	return (int) ret;
+}
+
+static int lf_mkdir(const char *path, mode_t mode)
+{
+	const struct lf_ctx *lf_ctx;
+
+	lf_ctx = get_ctx(NULL);
+	if (NULL == lf_ctx)
+		return -ENOMEM;
+
+	if (-1 == mkdirat(lf_ctx->fd, &path[1], mode))
+		return -errno;
+
+	return 0;
 }
 
 static int lf_opendir(const char *name, struct fuse_file_info *fi)
@@ -589,6 +665,20 @@ static int lf_closedir(const char *name, struct fuse_file_info *fi)
 
 	free(lf_fd);
 	fi->fh = (uint64_t) (uintptr_t) NULL;
+
+	return 0;
+}
+
+static int lf_rmdir(const char *path)
+{
+	const struct lf_ctx *lf_ctx;
+
+	lf_ctx = get_ctx(NULL);
+	if (NULL == lf_ctx)
+		return -ENOMEM;
+
+	if (-1 == unlinkat(lf_ctx->fd, &path[1], AT_REMOVEDIR))
+		return -errno;
 
 	return 0;
 }
@@ -720,6 +810,7 @@ static struct fuse_operations lf_oper = {
 	.truncate	= lf_truncate,
 	.open		= lf_open,
 	.release	= lf_close,
+	.unlink		= lf_unlink,
 
 	.read		= lf_read,
 	.write		= lf_write,
@@ -727,9 +818,11 @@ static struct fuse_operations lf_oper = {
 	.symlink	= lf_symlink,
 	.readlink	= lf_readlink,
 
+	.mkdir		= lf_mkdir,
 	.opendir	= lf_opendir,
 	.readdir	= lf_readdir,
-	.releasedir	= lf_closedir
+	.releasedir	= lf_closedir,
+	.rmdir		= lf_rmdir
 };
 
 int main(int argc, char *argv[])
@@ -743,6 +836,7 @@ int main(int argc, char *argv[])
 		goto end;
 	}
 
+	/* get the canonicalized path of the mount point, for prettier logging */
 	if (NULL == realpath(argv[1], ctx.path))
 		goto end;
 
