@@ -28,6 +28,6 @@ clean:
 install: $(PROG)
 	install -D -m 755 $(PROG) $(DESTDIR)/$(SBIN_DIR)/$(PROG)
 	install -D -m 644 $(PROG).8 $(DESTDIR)/$(MAN_DIR)/man8/$(PROG).8
-	install -D -m 644 README $(DESTDIR)/$(DOC_DIR)/README
+	install -D -m 644 README.md $(DESTDIR)/$(DOC_DIR)/README.md
 	install -m 644 AUTHORS $(DESTDIR)/$(DOC_DIR)/AUTHORS
 	install -m 644 COPYING $(DESTDIR)/$(DOC_DIR)/COPYING
