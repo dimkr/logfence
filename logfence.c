@@ -827,7 +827,7 @@ static struct fuse_operations lf_oper = {
 
 int main(int argc, char *argv[])
 {
-	char *fuse_argv[] = {argv[0], "-ononempty", "-f", argv[1],  NULL};
+	char *fuse_argv[] = {argv[0], "-ononempty", argv[1],  NULL};
 	struct lf_ctx ctx;
 	int ret = EXIT_FAILURE;
 
