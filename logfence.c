@@ -416,7 +416,9 @@ static int lf_create(const char *name,
 		return -tmp;
 	}
 
+	lf_fd->type = LF_REG;
 	fi->fh = (uint64_t) (uintptr_t) lf_fd;
+
 	return 0;
 }
 
