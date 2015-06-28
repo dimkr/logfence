@@ -309,8 +309,10 @@ static int open_internal(const char *name,
 		goto free_lock;
 	}
 
-	if (false == check)
+	if (false == check) {
 		(*lf_fd)->lock = NULL;
+		ret = 0;
+	}
 	else {
 		ret = add_lock(name, ctx, lf_ctx, *lf_fd);
 		if (0 != ret) {
@@ -319,7 +321,6 @@ static int open_internal(const char *name,
 		}
 	}
 
-	ret = 0;
 	goto unlock;
 
 free_lock:
